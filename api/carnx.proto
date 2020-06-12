@@ -1,0 +1,101 @@
+syntax = "proto3";
+package api;
+
+option go_package = "carnx/api";
+
+message Garbage {} // No matter
+
+message ReturnCode {
+  int32 code = 1; // Internal function return code
+}
+
+message NbCounters {
+  uint32 nb_counters = 1; // The number of available counters
+}
+
+message CounterID {
+  uint32 id = 1; // The raw ID of a counter
+}
+
+message CounterName {
+  string name = 1; // The name of the counter
+}
+
+message CounterValue {
+  uint64 value = 1; // The Value of the counter
+}
+
+message CounterList {
+  repeated string counters = 1; // A list of counter names
+}
+
+message Snap {
+  map<string, uint64> data = 1; // Counter Name->Value mapping
+}
+
+message AttachParameters {
+  string interface = 1; // Name of the network interface
+  uint32 xdp_flags = 2; // XDP attaching flags
+}
+
+message LoadAttachParameters {
+  string interface = 1;   // Name of the network interface
+  uint32 xdp_flags = 2;   // XDP attaching flags
+  string bpf_program = 3; // Path to the eBPF program
+}
+
+message LoadParameters {
+  string bpf_program = 1; // Path of the BPF program
+}
+
+message LoadStatus {
+  bool loaded = 1; // Status of the BPF program
+}
+
+message AttachStatus {
+  bool attached = 1; // Status of the BPF program
+}
+
+service Carnx {
+
+  // GetNbCounters returns the number of counters
+  rpc GetNbCounters(Garbage) returns (NbCounters) {}
+
+  // Ping aims to check the connection
+  rpc Ping(Garbage) returns (Garbage) {}
+
+  // GetCounter returns the value of a counter given its key
+  rpc GetCounter(CounterID) returns (CounterValue) {}
+
+  // GetCounterByName returns the value of a counter given its name
+  rpc GetCounterByName(CounterName) returns (CounterValue) {}
+
+  // GetCounterNames returns the list of the counters (in the right order)
+  rpc GetCounterNames(Garbage) returns (CounterList) {}
+
+  // Snapshot returns the current values of the counters
+  rpc Snapshot(Garbage) returns (Snap) {}
+
+  // Load an eBPF program into the kernel
+  rpc Load(LoadParameters) returns (ReturnCode) {}
+
+  // LoadAndAttach aims to init the XDP program. It loads the program
+  // into the kernel and attach it to the given interface with
+  // the given flags
+  rpc LoadAndAttach(LoadAttachParameters) returns (ReturnCode) {}
+
+  // Unload the eBPF program from the kernel
+  rpc Unload(Garbage) returns (ReturnCode) {}
+
+  // Attach the XDP program onto the given interface
+  rpc Attach(AttachParameters) returns (ReturnCode) {}
+
+  // Detach the XDP program from the interface previously given
+  rpc Detach(Garbage) returns (ReturnCode) {}
+
+  // IsLoaded check if the program is loaded into the kernel
+  rpc IsLoaded(Garbage) returns (LoadStatus) {}
+
+  // IsAttached check if the program is attached to the interface
+  rpc IsAttached(Garbage) returns (AttachStatus) {}
+}

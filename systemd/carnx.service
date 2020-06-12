@@ -1,0 +1,8 @@
+[Unit]
+Description=XDP based network counter digger
+After=network.target carnx.socket
+Requires=carnx.socket
+
+[Service]
+LimitMEMLOCK=131071
+ExecStart=/usr/bin/carnxd --systemd --interface lo --load /var/lib/carnx/carnx.bpf
