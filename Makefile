@@ -15,7 +15,7 @@ IFACE :=
 SRC     := main.go server.go
 BIN     := carnxd
 BPF     := carnx.bpf
-LIB     := libbpf.so.0 libcarnx.so
+LIB     := libbpf.so libbpf.so.0 libcarnx.so
 SERVICE := carnx.socket carnx.service
 
 # build dir
@@ -45,9 +45,10 @@ libcarnx:
 	cp -u c/libcarnx.so $(BUILD_LIB_DIR)
 	cp -u c/carnx.bpf $(BUILD_BIN_DIR)
 
-libbpf:
+libbpf: clean-libbpf
 	cd c/libbpf/src; make clean; make
 	cp -u c/libbpf/src/libbpf.so.0 $(BUILD_LIB_DIR)
+	ln -rfs $(BUILD_LIB_DIR)/libbpf.so.0 $(BUILD_LIB_DIR)/libbpf.so
 
 unload:
 	ip link set dev $(IFACE) xdpgeneric off
@@ -66,12 +67,16 @@ install:
 uninstall:
 	rm -f $(INSTALL_BIN_DIR)/$(BIN)
 	rm -f $(addprefix $(INSTALL_SERVICE_DIR)/,$(SERVICE))
-	rm -rf $(INSTALL_BPF_DIR)
+	rm -f $(INSTALL_BPF_DIR)/$(BPF)
+	rmdir $(INSTALL_BPF_DIR)
 	rm -f $(addprefix $(INSTALL_LIB_DIR)/,$(LIB))
 	systemctl daemon-reload
 
 concourse-build:
 	fly -t tutorial execute --config .build.yml -i code="." -o binary="."
+
+clean-libbpf:
+	rm -rf $(BUILD_LIB_DIR)/libbpf*
 
 clean:
 	rm -rf $(BUILD_BIN_DIR)
