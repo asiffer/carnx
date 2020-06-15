@@ -45,6 +45,7 @@ import (
 	"github.com/coreos/go-systemd/activation"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
 )
 
 const (
@@ -368,6 +369,7 @@ func serve(l net.Listener) error {
 	server := grpc.NewServer()
 	s := &CarnxServer{}
 	api.RegisterCarnxServer(server, s)
+	reflection.Register(server)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 
 	go func() {
