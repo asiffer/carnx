@@ -6,7 +6,7 @@ XDP-based network statistics digger.
 
 **XDP** (for eXpress Data Path) is a Linux Kernel feature (`>=4.8`) providing an early hook in the incoming packets queue (RX).
 
-The hook is placed in the network interface controller (NIC) driver just after the interrupt processing, and before any memory allocation needed by the network stack itself ([Wikipedia][1]). The following diagram details the position of XDP within the Linux kernel.
+The hook is placed in the network interface controller (NIC) driver just after the interrupt processing, and before any memory allocation needed by the network stack itself ([Wikipedia][1]). The following diagram ([source][8]) details the position of XDP in the incoming packet data flow.
 
 ![kernel](assets/kernel-diagram.svg)
 
@@ -29,7 +29,8 @@ The design of XDP constraints its use. In particular carnx is divided into sever
 The program processing the incoming packets is `carnx.bpf`. Its sources are written in `C` and are then compiled to `eBPF` with `clang` (XDP hooks are run by the eBPF virtual machine).
 This code is very critical as it runs in kernel mode, therefore it is verified by the kernel when we want to load it. There are many constraints to pass the *verifier*: limited program size, no loop, buffer bounds must be checked before accesses... 
 This program is implemented so as to update some counters from incoming packets.
-Once you have [built the program](#build), you can fetch the list of the counters through:
+
+As an example, if you have [built the program](#build), you can fetch the list of the counters through:
 
 ```console
 # grpcurl -plaintext -emit-defaults -unix /run/carnx.sock api.Carnx/GetCounterNames
@@ -51,12 +52,37 @@ Once you have [built the program](#build), you can fetch the list of the counter
 
 ### BPF Map
 
-The kernel hook increments some counters but naturally we want to fetch these values to a user-space application (our server). For this purpose XDP can use all the BPF ecosystem (recall that XDP is merely a BPF program) which notably provides *Maps* to share memory between the kernel side and the user side.
+The kernel hook increments some counters but naturally we want to fetch these values to a user-space application (our server). For this purpose XDP can use all the BPF ecosystem (recall that XDP is merely a BPF program) which notably provides *maps* to share memory between the kernel and the user-space.
 
 Several map types exist. Carnx use currently a single map (`XDP_CARNX_MAP`) storing counter values: counters are referenced by an index `i` and their value is merely `XDP_CARNX_MAP[i]`. So, our map behaves like an array. 
 
 Actually, there is not a single map but one for each CPU core. Why? In a Linux system, you have not a single RX queue but one for every core. Packets are well dispatched to the cores and are then processed in parallel (see [this post][10] for a more detailed view of the linux networking stack receiving data).
 
+### User-space interface
+
+While the hook updates the map, the counter values are fetched from the kernel
+by the user-space library `libcarnx.so`. This library mainly uses `libbpf.so` to interact with the kernel objects. So it can read `XDP_CARNX_MAP` but it is also responsible of loading `carnx.bpf` into the kernel (and attaching the program to the desired network interface).
+
+In addition, the library maintains a context (defined below) to track
+the load/attach operations.
+```c
+struct context
+{
+    struct bpf_object *obj;
+    int prog_fd;
+    int map_fd;
+    struct bpf_map *map;
+    char iface[IFACE_LENGTH];
+    unsigned int xdp_flags;
+    bool is_loaded;
+    bool is_attached;
+};
+```
+
+### Server
+
+Finally a server written in `Go` (`carnxd`) exposes a gRPC API to manage load/attach operations and provide counter values. It basically wraps around `libcarnx.so`.
+By default `carnxd` listens to a unix socket to avoid polluting a network interface with API calls (recall that the XDP hook monitors a network interface).
 
 
 ## Build
@@ -79,7 +105,7 @@ In particular it check the API. If there is a problem, you will see it :)
 
 ## Install 
 
-After the build, you can install everything with
+After the build, you can install everything with the following command. You should naturally check the `Makefile` to ensure it is not harmful :)
 ```console
 # make install
 ```
@@ -87,10 +113,9 @@ After the build, you can install everything with
 In details it does the following:
 - The BPF library files (`libbpf.so` and `libbpf.so.0`) are installed to `/usr/lib`
 - The carnx library (`libcarnx.so`) too
-- The carnx binary (`carnxd`) is installed to `/usr/bin`
+- The carnx server (`carnxd`) is installed to `/usr/bin`
 - The `systemd` files (`carnx.socket` and `carnx.service`) are installed to `/lib/systemd/system/` 
 
-You can test carnx in two ways:
 
 You can remove the installed files by calling
 ```console
@@ -99,7 +124,7 @@ You can remove the installed files by calling
 
 ## Get started
 
-Basically you can start the server by defining the path to the BPF program and the network interface to monitor:
+After installing carnx, you can start the server by defining the path to the BPF program and the network interface to monitor:
 ```console
 # carnxd --interface lo --load /var/lib/carnx/carnx.bpf
 ```
@@ -111,9 +136,20 @@ To test the server, you can install [grpcurl][9] and request a snapshot from the
 # grpcurl -plaintext -emit-defaults -unix /run/carnx.sock api.Carnx/Snapshot
 ```
 
+
 ## API
 
 The gRPC API is detailed in the [api](api/) sub-directory.
+
+## What's next?
+
+Many things can be done. I don't know precisely what I tend to do:
+- Improve carnx (config file, non-root rights to the socket...)
+- Build something upon carnx
+- Package carnx
+- Improve the doc
+
+
 
 [1]: https://en.wikipedia.org/wiki/Express_Data_Path
 [2]: https://github.com/xdp-project/xdp-paper/blob/master/xdp-the-express-data-path.pdf
